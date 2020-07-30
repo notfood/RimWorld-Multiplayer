@@ -262,43 +262,62 @@ namespace Multiplayer.Client
                 }
             },
             {
-                (ByteWriter data, Verb_CastAbility verb) => {
-                    if (verb.DirectOwner is Pawn pawn) {
-                        WriteSync(data, VerbOwnerType.Pawn);
-                        WriteSync(data, pawn);
-                    }
-                    else if (verb.DirectOwner is Ability ability) {
-                        WriteSync(data, VerbOwnerType.Ability);
-                        WriteSync(data, ability);
+                (SyncWorker sync, ref Verb verb)  => {
+                    if (sync.isWriting) {
+
+                        if (verb.DirectOwner is Pawn pawn) {
+                            sync.Write(VerbOwnerType.Pawn);
+                            sync.Write(pawn);
+                        }
+                        else if (verb.DirectOwner is Ability ability) {
+                            sync.Write(VerbOwnerType.Ability);
+                            sync.Write(ability);
+                        }
+                        else if (verb.DirectOwner is CompEquippable compEquipable) {
+                            sync.Write(VerbOwnerType.CompEquippable);
+                            sync.Write(compEquipable);
+                        }
+                        else if (verb.DirectOwner is CompReloadable compReloadable) {
+                            sync.Write(VerbOwnerType.CompReloadable);
+                            sync.Write(compReloadable);
+                        }
+                        else {
+                            Log.Error($"MP SyncDictionary.Verb: skipping unknown DirectOwner {verb.loadID} {verb.DirectOwner}");
+                            sync.Write(VerbOwnerType.None);
+                            return;
+                        }
+
+                        sync.Write(verb.loadID);
                     }
                     else {
-                        Log.Warning($"MP SyncDictionary.Verb_CastAbility: skipping unknown DirectOwner {verb.loadID} {verb.DirectOwner}");
-                        WriteSync(data, VerbOwnerType.None);
-                        return;
-                    }
 
-                    data.WriteString(verb.loadID);
-                },
-                (ByteReader data) => {
-                    var ownerType = ReadSync<VerbOwnerType>(data);
-                    if (ownerType == VerbOwnerType.None) {
-                        return null;
-                    }
+                        var ownerType = sync.Read<VerbOwnerType>();
+                        if (ownerType == VerbOwnerType.None) {
+                            return;
+                        }
 
-                    IVerbOwner verbOwner = null;
-                    if (ownerType == VerbOwnerType.Pawn) {
-                        verbOwner = ReadSync<Pawn>(data);
-                    }
-                    else if (ownerType == VerbOwnerType.Ability) {
-                        verbOwner = ReadSync<Ability>(data);
-                    }
-                    if (verbOwner == null) {
-                        return null;
-                    }
+                        IVerbOwner verbOwner = null;
+                        if (ownerType == VerbOwnerType.Pawn) {
+                            verbOwner = sync.Read<Pawn>();
+                        }
+                        else if (ownerType == VerbOwnerType.Ability) {
+                            verbOwner = sync.Read<Ability>();
+                        }
+                        else if (ownerType == VerbOwnerType.CompEquippable) {
+                            verbOwner = sync.Read<CompEquippable>();
+                        }
+                        else if (ownerType == VerbOwnerType.CompReloadable) {
+                            verbOwner = sync.Read<CompReloadable>();
+                        }
 
-                    var loadID = data.ReadString();
-                    return (Verb_CastAbility) verbOwner.VerbTracker.AllVerbs.Find(ve => ve.loadID == loadID);
-                }
+                        if (verbOwner == null) {
+                            return;
+                        }
+
+                        var loadID = sync.Read<string>();
+                        verb = verbOwner.VerbTracker.AllVerbs.Find(ve => ve.loadID == loadID);
+                    }
+                }, true // implicit
             },
             #endregion
 

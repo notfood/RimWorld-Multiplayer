@@ -476,21 +476,6 @@ namespace Multiplayer.Client
 
             SyncMethod.Register(typeof(Building_Bed), nameof(Building_Bed.Medical));
 
-            {
-                void RegisterIfDeclaredByType(Type type, string methodName)
-                {
-                    var assign = AccessTools.Method(type, methodName);
-                    if (assign.DeclaringType == type) {
-                        Sync.RegisterSyncMethod(assign).CancelIfAnyArgNull();
-                    }
-                }
-
-                foreach (var type in typeof(CompAssignableToPawn).AllSubtypesAndSelf()) {
-                    RegisterIfDeclaredByType(type, nameof(CompAssignableToPawn.TryAssignPawn));
-                    RegisterIfDeclaredByType(type, nameof(CompAssignableToPawn.TryUnassignPawn));
-                }
-            }
-
             SyncMethod.Register(typeof(PawnColumnWorker_Designator), nameof(PawnColumnWorker_Designator.SetValue)).CancelIfAnyArgNull(); // Virtual but currently not overriden by any subclasses
             SyncMethod.Register(typeof(PawnColumnWorker_FollowDrafted), nameof(PawnColumnWorker_FollowDrafted.SetValue)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(PawnColumnWorker_FollowFieldwork), nameof(PawnColumnWorker_FollowFieldwork.SetValue)).CancelIfAnyArgNull();
@@ -534,9 +519,6 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(PatchQuestChoices), nameof(PatchQuestChoices.Choose));
 
             SyncMethod.Register(typeof(Command_Ability), nameof(Command_Ability.ProcessInput)); // self cast psychic abilities
-            SyncMethod.Register(typeof(Verb_CastAbility), nameof(Verb_CastAbility.OrderForceTarget)); // single target Psychic abilities
-            SyncMethod.Register(typeof(CompAbilityEffect_WithDest), nameof(CompAbilityEffect_WithDest.OrderForceTarget)); // Psychic abilities with a source + destination, such as Skip (warp enemy to target place)
-            SyncMethod.Register(typeof(RoyalTitlePermitWorker_CallAid), nameof(RoyalTitlePermitWorker_CallAid.CallAid_NewTemp)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(CompAbilityEffect_StartSpeech), nameof(CompAbilityEffect_StartSpeech.Apply), new SyncType[] {typeof(LocalTargetInfo), typeof(LocalTargetInfo)}); // Royal Pawn: Give Speech button
 
             // 1
@@ -549,6 +531,42 @@ namespace Multiplayer.Client
 
             // 3
             SyncMethod.Register(typeof(ShipUtility), nameof(ShipUtility.StartupHibernatingParts)).CancelIfAnyArgNull().SetVersion(3);
+
+            SyncMethod.Register(typeof(MonumentMarker), nameof(MonumentMarker.PlaceAllBlueprints)); // Build Monument Quest - Monument Marker: place blueprints
+
+            {
+                void RegisterIfDeclaredByType(Type type, string methodName, Action<SyncMethod> settings)
+                {
+                    var assign = AccessTools.Method(type, methodName);
+                    if (assign.DeclaringType == type) {
+                        settings.Invoke(Sync.RegisterSyncMethod(assign));
+                    }
+                }
+
+                // Assignables
+                {
+                    void settings(SyncMethod sm) {
+                        sm.CancelIfAnyArgNull();
+                    }
+
+                    foreach (var type in typeof(CompAssignableToPawn).AllSubtypesAndSelf()) {
+                        RegisterIfDeclaredByType(type, nameof(CompAssignableToPawn.TryAssignPawn), settings);
+                        RegisterIfDeclaredByType(type, nameof(CompAssignableToPawn.TryUnassignPawn), settings);
+                    }
+                }
+
+                // Ordered Targets
+                {
+                    void settings(SyncMethod sm) {
+                        sm.CancelIfAnyArgNull();
+                        sm.SetContext(SyncContext.CurrentMap);
+                    }
+
+                    foreach(var type in typeof(ITargetingSource).AllImplementing()) {
+                        RegisterIfDeclaredByType(type, nameof(ITargetingSource.OrderForceTarget), settings);
+                    }
+                }
+            }
         }
 
         static SyncField SyncTimetable = Sync.Field(typeof(Pawn), "timetable", "times");
@@ -835,11 +853,11 @@ namespace Multiplayer.Client
         {
             SyncContext mouseKeyContext = SyncContext.QueueOrder_Down | SyncContext.MapMouseCell;
 
-            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass10_0", "<GotoLocationOption>b__0").CancelIfAnyFieldNull().SetContext(mouseKeyContext);  // Goto
-            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass5_1", "<AddHumanlikeOrders>b__0").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Arrest
-            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass5_6", "<AddHumanlikeOrders>b__4").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Rescue
-            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass5_6", "<AddHumanlikeOrders>b__5").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Capture
-            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass5_8", "<AddHumanlikeOrders>b__6").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Carry to cryptosleep casket
+            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass13_0", "<GotoLocationOption>b__0").CancelIfAnyFieldNull().SetContext(mouseKeyContext);  // Goto
+            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass8_1", "<AddHumanlikeOrders>b__0").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Arrest
+            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass8_6", "<AddHumanlikeOrders>b__4").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Rescue
+            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass8_6", "<AddHumanlikeOrders>b__5").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Capture
+            SyncDelegate.Register(typeof(FloatMenuMakerMap), "<>c__DisplayClass8_8", "<AddHumanlikeOrders>b__6").CancelIfAnyFieldNull().SetContext(mouseKeyContext);   // Carry to cryptosleep casket
 
             SyncDelegate.Register(typeof(HealthCardUtility), "<>c__DisplayClass26_0", "<GenerateSurgeryOption>b__1").CancelIfAnyFieldNull(without: "part");      // Add medical bill
             SyncDelegate.Register(typeof(Command_SetPlantToGrow), "<>c__DisplayClass5_0", "<ProcessInput>b__2");                                                // Set plant to grow
@@ -882,9 +900,8 @@ namespace Multiplayer.Client
 
             SyncMethod.Register(typeof(CompShuttle), "<CompGetGizmosExtra>b__54_1"); // Toggle autoload
             SyncMethod.Register(typeof(CompShuttle), "<CompGetGizmosExtra>b__54_2"); // Send shuttle
-            SyncMethod.Register(typeof(MonumentMarker), "<GetGizmos>b__28_1"); // Build Monument Quest - Monument Marker: cancel/remove marker
-            SyncDelegate.Register(typeof(MonumentMarker), "<>c__DisplayClass28_0", "<GetGizmos>b__3"); // Build Monument Quest - Monument Marker: place blueprints
-            SyncMethod.Register(typeof(MonumentMarker), "<GetGizmos>b__28_4"); // Build Monument Quest - Monument Marker: dev build all
+            SyncMethod.Register(typeof(MonumentMarker), "<GetGizmos>b__30_1"); // Build Monument Quest - Monument Marker: cancel/remove marker
+            SyncMethod.Register(typeof(MonumentMarker), "<GetGizmos>b__30_4").SetDebugOnly(); // Build Monument Quest - Monument Marker: dev build all
 
             SyncDelegate.Register(typeof(ITab_ContentsTransporter), "<>c__DisplayClass7_0", "<DoItemsLists>b__0").SetContext(SyncContext.MapSelected); // Discard loaded thing
         }
